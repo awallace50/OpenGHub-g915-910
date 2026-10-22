@@ -185,7 +185,7 @@ export interface FeatureInfo {
 }
 
 export type LightEffectName =
-  | "off" | "fixed" | "breathing" | "cycle" | "wave" | "ripple" | "freestyle" | "animation" | "commands" | "screen" | "audio";
+  | "off" | "fixed" | "breathing" | "cycle" | "wave" | "ripple" | "freestyle" | "animation" | "drift" | "commands" | "screen" | "audio";
 
 /** One animation frame: per-key colours by LED id, and how long it shows. */
 export interface AnimationFrame {
@@ -198,6 +198,18 @@ export interface Animation {
   frames: AnimationFrame[];
   cycle: "cycle" | "reverse" | "bounce" | "random";
   transition: "none" | "fade";
+}
+
+/** Colour Drift: every key fades to a random hue of its own, pauses, and picks the next. */
+export interface Drift {
+  /** LED ids to drive: the keyboard's key map. */
+  keys: number[];
+  fadeMs: number;
+  holdMs: number;
+  /** 0-100 */
+  saturation: number;
+  /** 0-100 */
+  brightness: number;
 }
 
 /** A screen region as fractions of the monitor. */
@@ -291,6 +303,8 @@ export interface DeviceProfile {
   gameModeKeys?: number[] | null;
   /** Keyboard animation, shown when a zone's effect is `animation`. */
   animation?: Animation | null;
+  /** Colour Drift settings, shown when a zone's effect is `drift`. */
+  drift?: Drift | null;
   /** Command lighting colours by group; "" = no colour. */
   commandColors?: Record<string, string>;
 }

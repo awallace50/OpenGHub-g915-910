@@ -1022,9 +1022,11 @@ pub fn apply_lighting_profiles(app: &tauri::AppHandle) {
             animator.stop(&snap.id);
             continue;
         };
-        // Keyboard animations are played by OpenGHub, frame by frame.
-        match (&dp.animation, dp.lighting_zones.values().any(|l| l.effect == "animation")) {
-            (Some(anim), true) if snap.online => animator.play(app.clone(), &snap.id, anim.clone()),
+        // Keyboard animations and Colour Drift are played by OpenGHub, frame by frame.
+        let wants = |effect: &str| dp.lighting_zones.values().any(|l| l.effect == effect);
+        match (&dp.animation, &dp.drift) {
+            (Some(anim), _) if snap.online && wants("animation") => animator.play(app.clone(), &snap.id, anim.clone()),
+            (_, Some(drift)) if snap.online && wants("drift") => animator.play_drift(app.clone(), &snap.id, drift.clone()),
             _ => animator.stop(&snap.id),
         }
         // Each profile carries its own lighting, as in G HUB: firmware effects
@@ -1107,8 +1109,8 @@ fn write_profile_lighting(app: &tauri::AppHandle, device_id: &str, cap: Option<u
     let Some(dp) = cfg.profiles.iter().find(|p| p.id == cfg.active_profile).and_then(|p| p.devices.get(device_id)) else {
         return;
     };
-    // The animator owns the keys while an animation runs.
-    if dp.lighting_zones.values().any(|l| l.effect == "animation") {
+    // The animator owns the keys while an animation or Colour Drift runs.
+    if dp.lighting_zones.values().any(|l| l.effect == "animation" || l.effect == "drift") {
         return;
     }
     // G HUB's Command Lighting: the game's command keys in their group colours.

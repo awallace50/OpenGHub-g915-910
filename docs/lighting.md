@@ -100,6 +100,9 @@ ANSI from the `0x4540` layout code.
 - **Animations** are Freestyle frames played by `animation.rs`: per frame duration, fade or cut,
   cycle / reverse / bounce / random. After the first frame only changed keys are written, which
   keeps a wireless keyboard responsive.
+- **Colour Drift** is generated rather than drawn: every key of the map fades to a random hue of
+  its own, holds, and picks the next (fade and hold times, saturation and brightness are the
+  settings). Written as diffs like an animation, at most ~20 steps a second.
 - **Command lighting** lights a game's command keys (from the application database's keystrokes)
   in their group colours; each group's colour can be overridden or set to none.
 
