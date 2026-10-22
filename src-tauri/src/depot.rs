@@ -585,7 +585,12 @@ pub fn parse_metadata(
 /// `features::zone_location_name`.
 fn zone_location_name(zone_id: &str, type_map: &HashMap<String, String>) -> String {
     let mapped = type_map.get(zone_id).map(String::as_str).unwrap_or(zone_id);
-    let base = mapped.strip_prefix("ZONE_").unwrap_or(mapped).to_ascii_lowercase();
+    let mapped = mapped.strip_prefix("ZONE_").unwrap_or(mapped);
+    // G HUB types a per-key keyboard's zones by what the keys do (HID_KEYBOARD,
+    // G_KEY, CONSUMER, INDICATOR...). The hardware has one lighting zone for all
+    // of them — `0x8070`/`0x8071` location Primary — and a second for the logo.
+    let mapped = if zone_id.starts_with("PERKEY_") && !mapped.eq_ignore_ascii_case("LOGO") { "PRIMARY" } else { mapped };
+    let base = mapped.to_ascii_lowercase();
     let mut chars = base.chars();
     match chars.next() {
         Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
@@ -1000,11 +1005,24 @@ pub fn fetch_for_product_ids(product_ids: &[u16]) -> Result<ImportedDevice, Erro
                 product_ids.iter().map(|p| format!("{p:04x}")).collect::<Vec<_>>().join(", ")
             ))
         })?;
+    // Keyboard definitions name no depot: G HUB picks one per physical layout
+    // (`g910_us`, `g910_uk`, ...). Take whichever the depository has, US first.
+    let depot_name = if def.depot.is_empty() {
+        let prefix = format!("{}_", def.model_id);
+        let mut names: Vec<&str> =
+            depository.depots.iter().map(|d| d.name.as_str()).filter(|n| n.starts_with(&prefix)).collect();
+        names.sort_by_key(|n| (*n != format!("{prefix}us"), n.to_string()));
+        names.first().map(|n| n.to_string()).ok_or_else(|| {
+            Error::other(format!("no depot named {prefix}* in the depository for {}", def.display_name))
+        })?
+    } else {
+        def.depot.clone()
+    };
     let entry = depository
-        .depot(&def.depot)
-        .ok_or_else(|| Error::other(format!("depot '{}' is not in the depository", def.depot)))?;
+        .depot(&depot_name)
+        .ok_or_else(|| Error::other(format!("depot '{depot_name}' is not in the depository")))?;
 
-    log::info!("fetching depot {} ({} bytes) for {}", def.depot, entry.size, def.display_name);
+    log::info!("fetching depot {} ({} bytes) for {}", depot_name, entry.size, def.display_name);
     let files = fetch_and_unpack(entry)?;
 
     // The thumbnail lives in core_assets; fetch that depot's file if we can.
@@ -1044,6 +1062,27 @@ fn fetch_thumbnail(depository: &Depository, uri: &str) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn perkey_zones_resolve_to_the_hardware_zones() {
+        // The G910's map from G HUB's device database.
+        let map: HashMap<String, String> = [
+            ("PERKEY_KEYBOARD", "HID_KEYBOARD"),
+            ("PERKEY_GKEY", "G_KEY"),
+            ("PERKEY_BRANDING", "LOGO"),
+            ("ZONE_PRIMARY", "PRIMARY"),
+            ("ZONE_BRANDING", "LOGO"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        assert_eq!(zone_location_name("PERKEY_KEYBOARD", &map), "Primary");
+        assert_eq!(zone_location_name("PERKEY_GKEY", &map), "Primary");
+        assert_eq!(zone_location_name("PERKEY_BRANDING", &map), "Logo");
+        assert_eq!(zone_location_name("ZONE_PRIMARY", &map), "Primary");
+        assert_eq!(zone_location_name("ZONE_BRANDING", &map), "Logo");
+        assert_eq!(zone_location_name("ZONE_FIVE", &HashMap::new()), "Five");
+    }
 
     #[test]
     fn depot_round_trips() {
