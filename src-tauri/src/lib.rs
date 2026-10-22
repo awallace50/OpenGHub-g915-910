@@ -164,6 +164,7 @@ pub fn run() {
             commands::get_ghub_cache_info,
             commands::get_artwork_layout,
             commands::get_artwork,
+            commands::get_artwork_bytes,
             commands::get_artwork_dir,
             commands::read_batteries,
             commands::set_demo_mode,

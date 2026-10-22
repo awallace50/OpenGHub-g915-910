@@ -1684,6 +1684,16 @@ pub async fn restore_onboard_memory(
 // Device artwork
 // ---------------------------------------------------------------------------
 
+/// One artwork file's bytes, for the dev server: a page served from
+/// `http://localhost` may not load `asset://` URLs under WebKitGTK ("domains,
+/// protocols and ports must match"), so the frontend inlines the images
+/// instead. The packaged app, on `tauri://localhost`, uses the asset protocol.
+#[tauri::command]
+pub async fn get_artwork_bytes(key: String) -> Result<tauri::ipc::Response> {
+    let bytes = crate::artwork::read(&key).ok_or_else(|| Error::other(format!("no artwork '{key}'")))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Absolute paths of every artwork file the user has supplied, keyed by product
 /// id (`"c08d"`). The frontend turns these into asset URLs.
 #[tauri::command]
