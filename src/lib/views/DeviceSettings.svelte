@@ -312,7 +312,7 @@
     <section class="card panel">
       <h2 class="section-title">Firmware</h2>
       <dl class="facts">
-        {#each device.firmware as f (f.kind + f.version)}
+        {#each device.firmware as f, i (`${i}:${f.kind}:${f.version}`)}
           <div>
             <dt>{f.kind}{f.active ? " · active" : ""}</dt>
             <dd>{f.version}</dd>
