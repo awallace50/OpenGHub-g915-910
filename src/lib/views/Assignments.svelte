@@ -140,9 +140,10 @@
     0xc359: G915X,
   };
 
+  /** This model's own control table, when it has one. */
+  const modelControls = $derived(artworkIds(device).map((id) => MODEL_CONTROLS[id]).find(Boolean) ?? null);
   const controls = $derived(
-    artworkIds(device).map((id) => MODEL_CONTROLS[id]).find(Boolean) ??
-      (device.kind === "keyboard" ? keyboardControls : device.kind === "wheel" ? wheelControls : mouseControls),
+    modelControls ?? (device.kind === "keyboard" ? keyboardControls : device.kind === "wheel" ? wheelControls : mouseControls),
   );
 
   interface Command {
@@ -603,7 +604,16 @@
    * the per-category guesses apply.
    */
   const spots = $derived.by<Record<string, ControlSpot>>(() => {
-    if (!layoutView) return controlSpots(device.kind);
+    if (!layoutView) {
+      const generic = controlSpots(device.kind);
+      // The generic keyboard spots are the Fn+F-key controls; a model with its
+      // own table (a G915's G-keys) takes those positions in order instead.
+      if (modelControls && device.kind === "keyboard") {
+        const positions = Object.values(generic);
+        return Object.fromEntries(modelControls.slice(0, positions.length).map((c, i) => [c.id, positions[i]]));
+      }
+      return generic;
+    }
     const exact: Record<string, ControlSpot> = {};
     if (device.kind === "wheel") {
       if (view === "pedals") return PEDAL_SPOTS;
