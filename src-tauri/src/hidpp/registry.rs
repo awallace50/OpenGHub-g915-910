@@ -110,6 +110,7 @@ pub static KNOWN_DEVICES: &[KnownDevice] = &[
     dev(0xc330, "G410 ATLAS SPECTRUM", DeviceKind::Keyboard),
     dev(0xc331, "G810 ORION SPECTRUM", DeviceKind::Keyboard),
     dev(0xc333, "G610 ORION", DeviceKind::Keyboard),
+    dev(0xc335, "G910 ORION SPECTRUM", DeviceKind::Keyboard),
     dev(0xc336, "G213 PRODIGY", DeviceKind::Keyboard),
     dev(0xc339, "PRO MECHANICAL", DeviceKind::Keyboard),
     dev(0xc33c, "G512 CARBON", DeviceKind::Keyboard),
