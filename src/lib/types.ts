@@ -515,7 +515,7 @@ export interface ArtworkView {
   view: "front" | "side" | string;
   width: number;
   height: number;
-  zones: { id: string; locationName: string; x: number; y: number; width: number; height: number }[];
+  zones: { id: string; locationName: string; component?: number | null; x: number; y: number; width: number; height: number }[];
   controls: {
     slotId: string;
     control: string;
@@ -525,6 +525,8 @@ export interface ArtworkView {
     labelY: number;
     side: "left" | "right" | "top";
   }[];
+  /** Every key with its HID++ control id, for keyboards whose depot lists them (G915 X). */
+  keys?: { cid: number; shape: "rect" | "circle" | string; x: number; y: number; width: number; height: number }[];
 }
 
 export interface GhubCacheInfo {
