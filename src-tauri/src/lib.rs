@@ -524,6 +524,9 @@ pub fn apply_assignment_profiles(app: &tauri::AppHandle) {
             Err(e) => log::debug!("{}: assignments not applied: {e}", snap.name),
         }
     }
+    // Function-key G-keys are taken through the keyboard grab, which follows
+    // the plan just built.
+    apply_game_modes(app);
 }
 
 /// Polls every device with software-mode assignments for button edges and
@@ -535,7 +538,19 @@ fn spawn_button_pump(app: tauri::AppHandle) {
             std::thread::sleep(Duration::from_millis(4));
             // A panic here would silently kill every assignment; keep pumping.
             let tick = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let events = app.state::<DeviceManager>().pump_button_events();
+                let manager = app.state::<DeviceManager>();
+                let mut events = manager.pump_button_events();
+                // G-keys that arrived as function keys through the keyboard grab.
+                for edge in app.state::<gamemode::GameMode>().drain_gkeys() {
+                    let action = manager.resolve_evdev_gkey(&edge.device, edge.button, edge.pressed);
+                    events.push(state::ButtonEvent {
+                        device_id: edge.device,
+                        button: edge.button,
+                        pressed: edge.pressed,
+                        action,
+                        wheel: false,
+                    });
+                }
                 if events.is_empty() {
                     return;
                 }
@@ -773,8 +788,9 @@ pub fn apply_all_profiles(app: &tauri::AppHandle) {
     apply_profile_script(app);
 }
 
-/// Game Mode on every keyboard that has it: the active profile's keys are
-/// blocked while it is switched on (see `gamemode.rs`).
+/// The keyboard grab on every keyboard that needs it: Game Mode blocks the
+/// active profile's keys while it is switched on, and function-key G-keys
+/// (G915 X) are diverted to the assignment plan (see `gamemode.rs`).
 pub fn apply_game_modes(app: &tauri::AppHandle) {
     let manager = app.state::<DeviceManager>();
     let game_mode = app.state::<gamemode::GameMode>();
@@ -784,18 +800,27 @@ pub fn apply_game_modes(app: &tauri::AppHandle) {
         if snap.demo || snap.kind != hidpp::registry::DeviceKind::Keyboard {
             continue;
         }
-        if !snap.online || !cfg.settings.game_mode_devices.contains(&snap.id) {
+        if !snap.online {
             game_mode.disable(&snap.id);
             continue;
         }
-        let usages = active
-            .and_then(|p| p.devices.get(&snap.id))
-            .and_then(|d| d.game_mode_keys.clone())
-            .unwrap_or_else(|| profiles::GAME_MODE_DEFAULT_KEYS.to_vec());
+        let blocked = if cfg.settings.game_mode_devices.contains(&snap.id) {
+            let usages = active
+                .and_then(|p| p.devices.get(&snap.id))
+                .and_then(|d| d.game_mode_keys.clone())
+                .unwrap_or_else(|| profiles::GAME_MODE_DEFAULT_KEYS.to_vec());
+            gamemode::codes_for_usages(&usages)
+        } else {
+            Vec::new()
+        };
+        let gkeys = manager.evdev_gkey_map(&snap.id);
         // evdev names the keyboard "Logitech G915 …"; the model token finds it.
         let token = snap.name.split_whitespace().next().unwrap_or(&snap.name).to_string();
         let injector = app.state::<std::sync::Arc<remap::Injector>>().inner().clone();
-        game_mode.enable(&snap.id, &token, gamemode::codes_for_usages(&usages), injector);
+        let wanted = !blocked.is_empty() || !gkeys.is_empty();
+        if !game_mode.enable(&snap.id, &token, blocked, gkeys, injector) && wanted {
+            log::warn!("{}: keyboard not grabbed — Game Mode and G-key assignments are not in effect", snap.name);
+        }
     }
 }
 

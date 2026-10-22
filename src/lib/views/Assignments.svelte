@@ -128,11 +128,11 @@
     label: `G${i + 1}`,
     fallback: `F${i + 1}`,
   }));
-  /** The G915 X: G1-G5 down the side, then G6-G9 across the top. */
+  /** The G915 X: G1-G5 down the side, then G6-G9 across the top; unassigned they type F13-F21. */
   const G915X: Control[] = Array.from({ length: 9 }, (_, i) => ({
     id: `button-${i + 1}`,
     label: `G${i + 1}`,
-    fallback: `F${i + 1}`,
+    fallback: `F${i + 13}`,
   }));
   const MODEL_CONTROLS: Record<number, Control[]> = {
     0xc095: G502X, 0x4099: G502X, 0xc098: G502X, 0xc097: G502X,
