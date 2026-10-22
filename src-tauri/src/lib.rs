@@ -464,14 +464,21 @@ pub fn apply_device_settings(app: &tauri::AppHandle, only: Option<&str>) {
     let store = app.state::<Store>();
     let cfg = store.get();
     for snap in manager.snapshots() {
-        if snap.demo || !snap.online || !snap.capabilities.onboard_memory {
+        if snap.demo || !snap.online {
             continue;
         }
         if only.is_some_and(|o| o != snap.id) {
             continue;
         }
         let Some(ds) = cfg.settings.device_settings.get(&snap.id) else { continue };
-        if let Err(e) = manager.write_onboard_power(&snap.id, ds.inactivity_lighting_min, ds.auto_sleep_min) {
+        let written = if snap.capabilities.onboard_memory {
+            manager.write_onboard_power(&snap.id, ds.inactivity_lighting_min, ds.auto_sleep_min)
+        } else if snap.capabilities.lighting_timers {
+            manager.write_rgb_power(&snap.id, ds.inactivity_lighting_min)
+        } else {
+            continue;
+        };
+        if let Err(e) = written {
             log::warn!("{}: power settings not written: {e}", snap.name);
         }
     }

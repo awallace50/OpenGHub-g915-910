@@ -228,6 +228,16 @@ pub fn set_disabled_keys(h: &mut Handle, usages: &[u8]) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// 0x4540 KeyboardLayout2
+// ---------------------------------------------------------------------------
+pub mod keyboard_layout {
+    pub const ID: u16 = 0x4540;
+    /// `getKeyboardLayout`: the first reply byte is Logitech's layout code
+    /// (1 = US, 3 = UK, 4 = German, …).
+    pub const FN_GET: u8 = 0x00;
+}
+
+// ---------------------------------------------------------------------------
 // 0x8081 PerKeyLighting
 // ---------------------------------------------------------------------------
 pub mod per_key {
@@ -344,6 +354,18 @@ pub mod lighting {
     pub const EFFECT_WAVE: u8 = 0x04;
     /// Keyboards: colour spreading from each pressed key (G HUB's RIPPLE).
     pub const EFFECT_RIPPLE: u8 = 0x0b;
+    /// Newer keyboards (G915 X) advertise saturation-bearing variants of
+    /// cycle, wave and ripple in place of the three ids above: same effects,
+    /// with a saturation byte and the period at a different offset. Layouts
+    /// from Solaar's `LEDEffects` table and OpenRGB's HID++ 2.0 controller.
+    pub const EFFECT_CYCLE_SAT: u8 = 0x15;
+    pub const EFFECT_WAVE_SAT: u8 = 0x16;
+    pub const EFFECT_RIPPLE_SAT: u8 = 0x17;
+    /// `rgbPowerModeConfig` (fn 7): `[0]` reads, `[1, 0, 0, idle_be, sleep_be]`
+    /// sets the firmware's lighting timers in seconds — dim after `idle`,
+    /// off after `sleep`. Devices without onboard profiles (G915 X) keep
+    /// them here instead of in a profile sector.
+    pub const FN_RGB_POWER_CONFIG: u8 = 0x07;
 
     /// Passed as the zone index to mean "every zone on the device".
     pub const ALL_ZONES: u8 = 0xff;
@@ -1009,16 +1031,24 @@ pub fn write_lighting(
         vec![zone]
     };
 
-    let (effect_id, union) = effect.encode(rgb);
+    let classic = effect.encode(rgb);
+    let saturation = effect.encode_saturation(rgb);
 
     for z in zones {
         // The zone's effect list is ordered, so its position *is* the index the
         // device wants. This also rejects unsupported effects with a message
         // that says which ones exist, rather than a bare "invalid argument".
+        // A G915 X lists the saturation variants (0x15–0x17) instead of the
+        // classic cycle/wave/ripple ids, so whichever the zone has is sent.
         let supported = zone_effects(h, z)?;
-        let Some(effect_index) = supported.iter().position(|id| *id == effect_id) else {
+        let found = [Some(classic), saturation]
+            .into_iter()
+            .flatten()
+            .find_map(|enc| supported.iter().position(|id| *id == enc.0).map(|i| (enc, i)));
+        let Some(((effect_id, union), effect_index)) = found else {
             return Err(Error::other(format!(
-                "zone {z} does not support effect {effect_id:#04x} (supports {})",
+                "zone {z} does not support effect {:#04x} (supports {})",
+                classic.0,
                 supported.iter().map(|e| format!("{e:#04x}")).collect::<Vec<_>>().join(", ")
             )));
         };
@@ -1113,6 +1143,64 @@ impl LightEffect {
             }
         }
     }
+
+    /// The same effect in the saturation-bearing ids `0x15`–`0x17`, for zones
+    /// that advertise those rather than `0x03`/`0x04`/`0x0b` (G915 X). `None`
+    /// for effects that have no such variant.
+    pub fn encode_saturation(self, rgb: [u8; 3]) -> Option<(u8, [u8; 10])> {
+        let mut p = [0u8; 10];
+        match self {
+            // cycle: { _, saturation, <4 unused>, period_be, intensity, _ }
+            LightEffect::Cycle { rate_ms, brightness } => {
+                p[1] = 0xff;
+                p[6..8].copy_from_slice(&rate_ms.to_be_bytes());
+                p[8] = brightness;
+                Some((lighting::EFFECT_CYCLE_SAT, p))
+            }
+            // wave: { _, saturation, <4 unused>, period_be, intensity, direction }
+            LightEffect::Wave { rate_ms, brightness, direction } => {
+                p[1] = 0xff;
+                p[6..8].copy_from_slice(&rate_ms.to_be_bytes());
+                p[8] = brightness;
+                p[9] = direction;
+                Some((lighting::EFFECT_WAVE_SAT, p))
+            }
+            // ripple: { r, g, b, saturation, <2 unused>, period_be, <2 unused> }
+            LightEffect::Ripple { rate_ms } => {
+                p[0..3].copy_from_slice(&rgb);
+                p[3] = 0xff;
+                p[6..8].copy_from_slice(&rate_ms.to_be_bytes());
+                Some((lighting::EFFECT_RIPPLE_SAT, p))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The firmware's lighting timers from `rgbPowerModeConfig` (0x8071 fn 7), as
+/// `(idle_s, sleep_s)`: seconds of inactivity before the LEDs dim, then turn off.
+pub fn read_rgb_power_config(h: &mut Handle) -> Result<(u16, u16)> {
+    let idx = h.feature_index(lighting::ID_RGB_EFFECTS)?;
+    let reply = h.call(idx, lighting::FN_RGB_POWER_CONFIG, &[0x00], ReportKind::Long)?;
+    Ok((reply.param_u16(3), reply.param_u16(5)))
+}
+
+/// Sets those timers. They are runtime values: kept while software control
+/// comes and goes, lost on a power cycle (verified on a G915 X), so they are
+/// rewritten whenever the device appears.
+pub fn write_rgb_power_config(h: &mut Handle, idle_s: u16, sleep_s: u16) -> Result<()> {
+    let idx = h.feature_index(lighting::ID_RGB_EFFECTS)?;
+    let [ih, il] = idle_s.to_be_bytes();
+    let [sh, sl] = sleep_s.to_be_bytes();
+    h.call(idx, lighting::FN_RGB_POWER_CONFIG, &[0x01, 0x00, 0x00, ih, il, sh, sl], ReportKind::Long)?;
+    Ok(())
+}
+
+/// Logitech's layout code from `0x4540` (1 = US, 3 = UK, 4 = German, …), which
+/// picks the drawn key map's physical layout.
+pub fn read_keyboard_layout(h: &mut Handle) -> Result<u8> {
+    let idx = h.feature_index(keyboard_layout::ID)?;
+    Ok(h.call(idx, keyboard_layout::FN_GET, &[], ReportKind::Long)?.param(0))
 }
 
 #[cfg(test)]
@@ -1235,6 +1323,31 @@ mod tests {
         let (id, p) = LightEffect::Off.encode([1, 2, 3]);
         assert_eq!(id, lighting::EFFECT_OFF);
         assert_eq!(p, [0u8; 10]);
+    }
+
+    #[test]
+    fn saturation_variants() {
+        // A G915 X lists 0x15/0x16/0x17 instead of cycle/wave/ripple; the
+        // layouts follow Solaar's LEDEffects table.
+        let (id, p) = LightEffect::Cycle { rate_ms: 5000, brightness: 60 }.encode_saturation([9, 9, 9]).unwrap();
+        assert_eq!(id, lighting::EFFECT_CYCLE_SAT);
+        assert_eq!(p[1], 0xff, "saturation");
+        assert_eq!(&p[6..8], &5000u16.to_be_bytes());
+        assert_eq!(p[8], 60);
+
+        let (id, p) = LightEffect::Wave { rate_ms: 3000, brightness: 100, direction: 6 }.encode_saturation([0; 3]).unwrap();
+        assert_eq!(id, lighting::EFFECT_WAVE_SAT);
+        assert_eq!(&p[6..8], &3000u16.to_be_bytes());
+        assert_eq!(p[9], 6);
+
+        let (id, p) = LightEffect::Ripple { rate_ms: 20 }.encode_saturation([1, 2, 3]).unwrap();
+        assert_eq!(id, lighting::EFFECT_RIPPLE_SAT);
+        assert_eq!(&p[0..3], &[1, 2, 3]);
+        assert_eq!(p[3], 0xff);
+        assert_eq!(&p[6..8], &20u16.to_be_bytes());
+
+        assert!(LightEffect::Fixed.encode_saturation([0; 3]).is_none());
+        assert!(LightEffect::Breathing { rate_ms: 1, brightness: 1 }.encode_saturation([0; 3]).is_none());
     }
 
     #[test]

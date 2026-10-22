@@ -13,7 +13,7 @@
   import RegionPicker from "$lib/components/RegionPicker.svelte";
   import Slider from "$lib/components/Slider.svelte";
   import KeyboardMap from "$lib/components/KeyboardMap.svelte";
-  import { G915_IDS, G915_KEYS, G915_SIZE, type Key } from "$lib/keyboards/g915";
+  import { keyMapFor, type Key } from "$lib/keyboards/g915";
   import { artworkIds, batteryIcon, batteryLabel } from "$lib/device-ui";
   import { artwork } from "$lib/stores/artwork.svelte";
   import { configStore } from "$lib/stores/config.svelte";
@@ -35,6 +35,10 @@
     0x0a: "breathing",
     0x04: "wave",
     0x0b: "ripple",
+    // Saturation-bearing variants newer keyboards (G915 X) advertise instead.
+    0x15: "cycle",
+    0x16: "wave",
+    0x17: "ripple",
   };
 
   /**
@@ -110,16 +114,14 @@
   let syncingOptions = $state(false);
   const zoneInfo = $derived(zones.find((z) => z.index === activeZone));
   /** The drawn key map, for keyboards OpenGHub has one for. */
-  const keyMap = $derived(
-    device.capabilities.perKey && artworkIds(device).some((id) => G915_IDS.includes(id))
-      ? { keys: G915_KEYS, size: G915_SIZE }
-      : null,
-  );
+  const keyMap = $derived(device.capabilities.perKey ? keyMapFor(artworkIds(device), device.keyboardLayout) : null);
   /** Only offer effects this particular zone advertises. */
   const available = $derived([
-    ...(zoneInfo?.effects ?? [0x00, 0x01, 0x03, 0x0a])
-      .map((id) => EFFECT_BY_ID[id])
-      .filter((name): name is LightEffectName => !!name),
+    ...new Set(
+      (zoneInfo?.effects ?? [0x00, 0x01, 0x03, 0x0a])
+        .map((id) => EFFECT_BY_ID[id])
+        .filter((name): name is LightEffectName => !!name),
+    ),
     ...(keyMap ? (["freestyle", "animation"] as LightEffectName[]) : []),
     ...(keyMap && configStore.active?.applicationId ? (["commands"] as LightEffectName[]) : []),
     ...SOFTWARE,

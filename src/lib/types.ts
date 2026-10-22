@@ -59,6 +59,8 @@ export interface Capabilities {
   gameMode?: boolean;
   /** A racing wheel driven through the classic command channel. */
   wheel?: boolean;
+  /** Lighting timers held by the RGB feature (0x8071) rather than an onboard profile. */
+  lightingTimers?: boolean;
 }
 
 export interface FirmwareInfo {
@@ -149,6 +151,8 @@ export interface Device {
   firmware?: FirmwareInfo[];
   wheel?: WheelInfo | null;
   protocolVersion: string;
+  /** Logitech's layout code from 0x4540 (1 = US), when the keyboard reports one. */
+  keyboardLayout?: number | null;
   demo: boolean;
   lastError: string | null;
 }

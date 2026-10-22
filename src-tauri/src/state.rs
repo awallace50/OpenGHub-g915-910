@@ -42,6 +42,10 @@ pub struct Capabilities {
     /// A racing wheel driven through the classic command channel.
     #[serde(default)]
     pub wheel: bool,
+    /// Lighting timers held by the RGB feature (0x8071 fn 7) rather than an
+    /// onboard profile — keyboards without 0x8100, like the G915 X.
+    #[serde(default)]
+    pub lighting_timers: bool,
 }
 
 /// Static facts about a wheel, for the Steering Wheel page.
@@ -90,6 +94,10 @@ pub struct DeviceSnapshot {
     #[serde(default)]
     pub wheel: Option<WheelInfo>,
     pub protocol_version: String,
+    /// Logitech's layout code from `0x4540` (1 = US), when the keyboard
+    /// reports one; picks the ISO or ANSI drawing of its key map.
+    #[serde(default)]
+    pub keyboard_layout: Option<u8>,
     /// Set when this entry is synthesised rather than backed by real hardware.
     pub demo: bool,
     /// Last error seen while talking to the device, surfaced as a card badge.
@@ -117,6 +125,7 @@ impl DeviceSnapshot {
             firmware: Vec::new(),
             wheel: None,
             protocol_version: String::new(),
+            keyboard_layout: None,
             demo: false,
             last_error: None,
         }
@@ -476,6 +485,22 @@ impl DeviceManager {
             onboard::write_power(h, sector, Some(secs(inactivity_lighting_min)), Some(secs(auto_sleep_min)), info)
         })?;
         inner.with_handle(id, reload_onboard_profile)
+    }
+
+    /// Writes the lighting-off timeout (minutes; 0 leaves the firmware's
+    /// value) into the RGB feature's power config (0x8071 fn 7), for
+    /// keyboards without onboard profiles. The dim timer stays as the
+    /// firmware has it, capped at the new lights-off time.
+    pub fn write_rgb_power(&self, id: &str, inactivity_lighting_min: u16) -> Result<()> {
+        let mut inner = self.inner.lock();
+        if inner.demo {
+            return Ok(());
+        }
+        inner.with_handle(id, |h| {
+            let (idle, sleep) = features::read_rgb_power_config(h)?;
+            let sleep = if inactivity_lighting_min == 0 { sleep } else { (inactivity_lighting_min as u32 * 60).min(0xffff) as u16 };
+            features::write_rgb_power_config(h, idle.min(sleep), sleep)
+        })
     }
 
     /// Writes the DPI ladder and report rate into the onboard profile.
@@ -1738,6 +1763,15 @@ fn probe(handle: &mut Handle, snapshot: &mut DeviceSnapshot, endpoint: &hidpp::E
     }
     snapshot.online = true;
     snapshot.demo = false;
+    if handle.supports(features::keyboard_layout::ID) {
+        snapshot.keyboard_layout = features::read_keyboard_layout(handle).ok();
+    }
+
+    // Without onboard profiles the lighting timers live in 0x8071 itself
+    // (G915 X); probe the read so a device that lacks fn 7 does not get the UI.
+    let lighting_timers = handle.supports(features::lighting::ID_RGB_EFFECTS)
+        && !handle.supports(0x8100)
+        && features::read_rgb_power_config(handle).is_ok();
 
     snapshot.capabilities = Capabilities {
         dpi: handle.supports(features::dpi::ID),
@@ -1753,6 +1787,7 @@ fn probe(handle: &mut Handle, snapshot: &mut DeviceSnapshot, endpoint: &hidpp::E
         // Done in software (gamemode.rs), so any keyboard can have it.
         game_mode: snapshot.kind == DeviceKind::Keyboard,
         wheel: false,
+        lighting_timers,
     };
 
     read_dynamic_state(handle, snapshot);

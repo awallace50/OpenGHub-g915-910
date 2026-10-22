@@ -128,9 +128,16 @@
     label: `G${i + 1}`,
     fallback: `F${i + 1}`,
   }));
+  /** The G915 X: G1-G5 down the side, then G6-G9 across the top. */
+  const G915X: Control[] = Array.from({ length: 9 }, (_, i) => ({
+    id: `button-${i + 1}`,
+    label: `G${i + 1}`,
+    fallback: `F${i + 1}`,
+  }));
   const MODEL_CONTROLS: Record<number, Control[]> = {
     0xc095: G502X, 0x4099: G502X, 0xc098: G502X, 0xc097: G502X,
     0xc33e: G915, 0x407c: G915, 0xc33f: G915,
+    0xc359: G915X,
   };
 
   const controls = $derived(
