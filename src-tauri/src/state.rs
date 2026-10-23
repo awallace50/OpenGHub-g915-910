@@ -1822,7 +1822,7 @@ fn probe(handle: &mut Handle, snapshot: &mut DeviceSnapshot, endpoint: &hidpp::E
         lighting: handle.supports(features::lighting::ID_COLOR_LED_EFFECTS)
             || handle.supports(features::lighting::ID_RGB_EFFECTS),
         onboard_memory: handle.supports(0x8100),
-        per_key: handle.supports(features::per_key::ID) && snapshot.kind == DeviceKind::Keyboard,
+        per_key: features::supports_per_key(handle) && snapshot.kind == DeviceKind::Keyboard,
         // Done in software (gamemode.rs), so any keyboard can have it.
         game_mode: snapshot.kind == DeviceKind::Keyboard,
         wheel: false,

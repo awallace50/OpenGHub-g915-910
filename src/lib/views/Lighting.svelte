@@ -13,7 +13,8 @@
   import RegionPicker from "$lib/components/RegionPicker.svelte";
   import Slider from "$lib/components/Slider.svelte";
   import KeyboardMap from "$lib/components/KeyboardMap.svelte";
-  import { keyMapFor, type Key } from "$lib/keyboards/g915";
+  import { type Key } from "$lib/keyboards/g915";
+  import { keyMapForDevice } from "$lib/keyboards/layout-map";
   import { artworkIds, batteryIcon, batteryLabel } from "$lib/device-ui";
   import { artwork } from "$lib/stores/artwork.svelte";
   import { configStore } from "$lib/stores/config.svelte";
@@ -114,8 +115,10 @@
   const hasLayout = $derived(artwork.layoutFor(artworkIds(device)) !== null);
   let syncingOptions = $state(false);
   const zoneInfo = $derived(zones.find((z) => z.index === activeZone));
-  /** The drawn key map, for keyboards OpenGHub has one for. */
-  const keyMap = $derived(device.capabilities.perKey ? keyMapFor(artworkIds(device), device.keyboardLayout) : null);
+  /** The key map: drawn for the G915 family, from the depot layout for the rest. */
+  const keyMap = $derived(
+    device.capabilities.perKey ? keyMapForDevice(artworkIds(device), device.keyboardLayout, artwork.layoutFor(artworkIds(device))) : null,
+  );
   /** Only offer effects this particular zone advertises. */
   const available = $derived([
     ...new Set(

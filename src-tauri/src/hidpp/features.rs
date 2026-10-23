@@ -252,6 +252,46 @@ pub mod per_key {
     pub const BIG_MAX: usize = 13;
 }
 
+// ---------------------------------------------------------------------------
+// 0x8080 PerKeyLighting, first generation (G910, G810, G610, G410, G513, PRO)
+// ---------------------------------------------------------------------------
+pub mod per_key_v1 {
+    pub const ID: u16 = 0x8080;
+    /// `[group_be, count_be, (key, r, g, b) × count]`; a very long report
+    /// carries 14 keys, a long one 3. The sequence g810-led uses.
+    pub const FN_SET_GROUP: u8 = 0x03;
+    /// Shows everything sent since the last commit.
+    pub const FN_COMMIT: u8 = 0x05;
+    /// Keys are addressed by HID usage (`0x04` = A ... `0xe7` = right GUI).
+    pub const GROUP_KEYS: u16 = 0x0001;
+    /// G-keys are 1-based.
+    pub const GROUP_GKEYS: u16 = 0x0004;
+    /// The G910 has two logo LEDs, 1 and 2.
+    pub const GROUP_LOGO: u16 = 0x0010;
+
+    /// OpenGHub addresses every per-key LED with one byte. For this feature
+    /// that byte is the HID usage for the keys, and the two unused ranges
+    /// above the modifiers for the rest: logo LEDs at `0xe8 + n`, G-keys at
+    /// `0xf0 + n`. The layout-derived key map in the UI uses the same scheme.
+    pub const LOGO_BASE: u8 = 0xe7;
+    pub const GKEY_BASE: u8 = 0xf0;
+
+    /// Splits an OpenGHub LED id into the feature's `(group, key)`.
+    pub fn address(led: u8) -> (u16, u8) {
+        match led {
+            0xf1..=0xf9 => (GROUP_GKEYS, led - GKEY_BASE),
+            0xe8..=0xef => (GROUP_LOGO, led - LOGO_BASE),
+            _ => (GROUP_KEYS, led),
+        }
+    }
+}
+
+/// True when the device can take per-key colours through either generation
+/// of the feature.
+pub fn supports_per_key(h: &mut Handle) -> bool {
+    h.supports(per_key::ID) || h.supports(per_key_v1::ID)
+}
+
 /// Sets individual LEDs, by the device's own LED ids, and shows them.
 ///
 /// The keyboard's cluster effects are switched off first so the per-key
@@ -264,7 +304,6 @@ pub fn write_per_key(h: &mut Handle, leds: &[(u8, [u8; 3])]) -> Result<()> {
 /// As [`write_per_key`]; `take_over` false skips switching the clusters off,
 /// for the frames of an animation after the first.
 pub fn write_per_key_frame(h: &mut Handle, leds: &[(u8, [u8; 3])], take_over: bool) -> Result<()> {
-    let idx = h.feature_index(per_key::ID)?;
     // Take the LEDs as for any lighting write, with every cluster off.
     if take_over && (h.supports(lighting::ID_RGB_EFFECTS) || h.supports(lighting::ID_COLOR_LED_EFFECTS)) {
         let count = lighting_zone_count(h).unwrap_or(0);
@@ -272,6 +311,10 @@ pub fn write_per_key_frame(h: &mut Handle, leds: &[(u8, [u8; 3])], take_over: bo
             let _ = write_lighting(h, z, [0, 0, 0], LightEffect::Off, false);
         }
     }
+    if !h.supports(per_key::ID) && h.supports(per_key_v1::ID) {
+        return write_per_key_v1(h, leds);
+    }
+    let idx = h.feature_index(per_key::ID)?;
 
     let mut by_colour: Vec<([u8; 3], Vec<u8>)> = Vec::new();
     for (led, rgb) in leds {
@@ -308,6 +351,35 @@ pub fn write_per_key_frame(h: &mut Handle, leds: &[(u8, [u8; 3])], take_over: bo
         h.call(idx, per_key::FN_SET_LEDS, &p, ReportKind::Long)?;
     }
     h.call(idx, per_key::FN_COMMIT, &[], ReportKind::Long)?;
+    Ok(())
+}
+
+/// The 0x8080 frame: one group per packet, keys and G-keys in very long
+/// reports, the logo in a long one, then a commit. Verified on a G910.
+fn write_per_key_v1(h: &mut Handle, leds: &[(u8, [u8; 3])]) -> Result<()> {
+    let idx = h.feature_index(per_key_v1::ID)?;
+    let mut groups: Vec<(u16, Vec<(u8, [u8; 3])>)> = Vec::new();
+    for (led, rgb) in leds {
+        let (group, key) = per_key_v1::address(*led);
+        match groups.iter_mut().find(|(g, _)| *g == group) {
+            Some((_, list)) => list.push((key, *rgb)),
+            None => groups.push((group, vec![(key, *rgb)])),
+        }
+    }
+    for (group, list) in &groups {
+        let (kind, per_packet) = if *group == per_key_v1::GROUP_LOGO { (ReportKind::Long, 3) } else { (ReportKind::VeryLong, 14) };
+        for chunk in list.chunks(per_packet) {
+            let mut p = Vec::with_capacity(4 + 4 * chunk.len());
+            p.extend_from_slice(&group.to_be_bytes());
+            p.extend_from_slice(&(chunk.len() as u16).to_be_bytes());
+            for (key, rgb) in chunk {
+                p.push(*key);
+                p.extend_from_slice(rgb);
+            }
+            h.call(idx, per_key_v1::FN_SET_GROUP, &p, kind)?;
+        }
+    }
+    h.call(idx, per_key_v1::FN_COMMIT, &[], ReportKind::Long)?;
     Ok(())
 }
 
@@ -1298,6 +1370,17 @@ mod tests {
         assert!(ProtocolError(0x02).is_invalid_argument());
         assert!(!ProtocolError(0x09).is_invalid_argument());
         assert!(!ProtocolError(0x00).is_invalid_argument());
+    }
+
+    #[test]
+    fn per_key_v1_addresses() {
+        use super::per_key_v1::*;
+        assert_eq!(address(0x04), (GROUP_KEYS, 0x04), "A is its HID usage");
+        assert_eq!(address(0xe7), (GROUP_KEYS, 0xe7), "right GUI is the last key usage");
+        assert_eq!(address(0xe8), (GROUP_LOGO, 1));
+        assert_eq!(address(0xe9), (GROUP_LOGO, 2));
+        assert_eq!(address(0xf1), (GROUP_GKEYS, 1));
+        assert_eq!(address(0xf9), (GROUP_GKEYS, 9));
     }
 
     #[test]

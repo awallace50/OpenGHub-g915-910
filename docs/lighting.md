@@ -96,6 +96,15 @@ off first. LED ids on the G915 are `usage − 3` for ordinary keys, `usage − 0
 numbering OpenRGB documents. `src/lib/keyboards/g915.ts` draws the map — G915 or G915 X, ISO or
 ANSI from the `0x4540` layout code.
 
+The generation before it — G910, G810, G610, G410, G513, PRO — has `0x8080` instead: fn 3 takes
+`[group_be, count_be, (key, r, g, b) × count]`, 14 keys in a very long report or 3 in a long one,
+and fn 5 commits (the packets g810-led sends). Keys are addressed by HID usage in group `0x0001`,
+G-keys 1–9 in group `0x0004`, the logo LEDs 1–2 in group `0x0010`. OpenGHub keeps one byte per
+LED, so for these keyboards the id is the usage, `0xe7 + n` for a logo LED and `0xf0 + n` for a
+G-key (`per_key_v1` in `features.rs`). There is no drawn map: `src/lib/keyboards/layout-map.ts`
+builds one from the imported depot layout, whose `PERKEY_*` zones are one rectangle per key with
+the usage as component id. Verified on a G910 ORION SPECTRUM.
+
 - **Freestyle** paints keys on that map; the colours live in the profile (`perKey`).
 - **Animations** are Freestyle frames played by `animation.rs`: per frame duration, fade or cut,
   cycle / reverse / bounce / random. After the first frame only changed keys are written, which

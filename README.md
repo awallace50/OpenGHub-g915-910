@@ -55,7 +55,7 @@ Optional, for the LIGHTSYNC software effects: `gstreamer1.0-tools` + `gstreamer1
 
 ## Tested hardware
 
-Developed against a **G502 LIGHTSPEED** (mouse features, on-board memory, lighting, macros, scripting) and a **G923 Racing Wheel** (PS4/PC edition: force feedback, TrueForce, shifter, pedals, gamepad mode). Keyboards: a **G915 X** (wired: per-key lighting and Colour Drift, lighting timers, G-key assignments) and a **G910 ORION SPECTRUM** (detection, artwork, zone lighting and G-keys; its older per-key lighting feature is not driven yet). Any other HID++ 2.0 device should work for the features it exposes — the app reads the device's own feature list and adapts. If yours doesn't, open an issue with the output of *Device settings → HID++ features*.
+Developed against a **G502 LIGHTSPEED** (mouse features, on-board memory, lighting, macros, scripting) and a **G923 Racing Wheel** (PS4/PC edition: force feedback, TrueForce, shifter, pedals, gamepad mode). Keyboards: a **G915 X** (wired: per-key lighting and Colour Drift, lighting timers, G-key assignments) and a **G910 ORION SPECTRUM** (the older `0x8080` per-key lighting, so Freestyle, animations and Colour Drift on a map built from the G HUB layout; zone lighting; G-keys). Any other HID++ 2.0 device should work for the features it exposes — the app reads the device's own feature list and adapts. If yours doesn't, open an issue with the output of *Device settings → HID++ features*.
 
 ## Games and Proton
 
