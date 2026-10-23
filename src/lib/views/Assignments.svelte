@@ -134,10 +134,17 @@
     label: `G${i + 1}`,
     fallback: `F${i + 13}`,
   }));
+  /** The G910: G1-G5 down the side, G6-G9 above the F-keys; unassigned they type F1-F9 (0x8010). */
+  const G910: Control[] = Array.from({ length: 9 }, (_, i) => ({
+    id: `button-${i + 1}`,
+    label: `G${i + 1}`,
+    fallback: `F${i + 1}`,
+  }));
   const MODEL_CONTROLS: Record<number, Control[]> = {
     0xc095: G502X, 0x4099: G502X, 0xc098: G502X, 0xc097: G502X,
     0xc33e: G915, 0x407c: G915, 0xc33f: G915,
     0xc359: G915X,
+    0xc32b: G910, 0xc335: G910,
   };
 
   /** This model's own control table, when it has one. */
@@ -307,7 +314,7 @@
    * G HUB's M1/M2/M3 on keyboards with M-keys: each keeps its own G-key
    * bindings, stored as `button-1:m2` / `button-1:m3` (M1 has no suffix).
    */
-  const hasMKeys = $derived(controls === G915);
+  const hasMKeys = $derived(controls === G915 || controls === G910);
   let mstate = $state<1 | 2 | 3>(1);
 
   /** Control id as stored for the current layer. */

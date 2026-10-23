@@ -599,8 +599,12 @@ fn zone_location_name(zone_id: &str, type_map: &HashMap<String, String>) -> Stri
 }
 
 /// `g502wireless_g7_m1` → `button-7`; anything unrecognised keeps the slot id.
+///
+/// The first segment is the model prefix and is skipped: a G910's `g910_g1_m1`
+/// would otherwise read as button 910.
 pub fn control_id_for_slot(slot: &str) -> String {
     slot.split('_')
+        .skip(1)
         .find_map(|part| part.strip_prefix('g').and_then(|n| n.parse::<u32>().ok()))
         .map(|n| format!("button-{n}"))
         .unwrap_or_else(|| slot.to_string())
@@ -1234,6 +1238,8 @@ mod tests {
         assert_eq!(control_id_for_slot("g502wireless_g11_m1"), "button-11");
         assert_eq!(control_id_for_slot("g502wireless_g9_m1_shifted"), "button-9");
         assert_eq!(control_id_for_slot("g502wireless_mouse_settings"), "g502wireless_mouse_settings");
+        assert_eq!(control_id_for_slot("g910_g1_m1"), "button-1", "the model prefix is not a button");
+        assert_eq!(control_id_for_slot("g915x_g6_m1"), "button-6");
     }
 
     #[test]
