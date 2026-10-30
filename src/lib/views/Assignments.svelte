@@ -18,7 +18,7 @@
   import Icon, { type IconName } from "$lib/components/Icon.svelte";
   import { artworkIds } from "$lib/device-ui";
   import { artwork } from "$lib/stores/artwork.svelte";
-  import { controlSpots, type ControlSpot } from "$lib/zones";
+  import { controlSpotsFor, type ControlSpot } from "$lib/zones";
   import { configStore } from "$lib/stores/config.svelte";
   import { ui } from "$lib/stores/ui.svelte";
   import type { ApplicationCommands, Assignment, Device } from "$lib/types";
@@ -612,7 +612,7 @@
    */
   const spots = $derived.by<Record<string, ControlSpot>>(() => {
     if (!layoutView) {
-      const generic = controlSpots(device.kind);
+      const generic = controlSpotsFor(device.kind, artworkIds(device));
       // The generic keyboard spots are the Fn+F-key controls; a model with its
       // own table (a G915's G-keys) takes those positions in order instead.
       if (modelControls && device.kind === "keyboard") {
